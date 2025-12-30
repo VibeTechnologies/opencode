@@ -119,6 +119,11 @@ build_and_install() {
     cp "$binary_path" "$INSTALL_DIR/opencode"
     chmod 755 "$INSTALL_DIR/opencode"
     
+    if [ "$os" = "darwin" ]; then
+        print_message info "${MUTED}Signing binary for macOS...${NC}"
+        codesign -s - "$INSTALL_DIR/opencode" 2>/dev/null || true
+    fi
+    
     print_message success "Build complete"
 }
 
