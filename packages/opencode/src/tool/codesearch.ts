@@ -3,6 +3,9 @@ import { Tool } from "./tool"
 import DESCRIPTION from "./codesearch.txt"
 import { Config } from "../config/config"
 import { Permission } from "../permission"
+import { ToolResults } from "../session/tool-results"
+
+const MAX_OUTPUT_LENGTH = 30_000
 
 const API_CONFIG = {
   BASE_URL: "https://mcp.exa.ai",
@@ -110,8 +113,16 @@ export const CodeSearchTool = Tool.define("codesearch", {
         if (line.startsWith("data: ")) {
           const data: McpCodeResponse = JSON.parse(line.substring(6))
           if (data.result && data.result.content && data.result.content.length > 0) {
+            let output = data.result.content[0].text
+            if (output.length > MAX_OUTPUT_LENGTH) {
+              const filePath = await ToolResults.save(ctx.sessionID, "codesearch", output)
+              output = `Output (${output.length.toLocaleString()} characters) exceeds maximum allowed (${MAX_OUTPUT_LENGTH.toLocaleString()}).
+Output has been saved to ${filePath}
+Use the Read tool with offset/limit parameters to read specific portions,
+or use Grep to search for specific content within the file.`
+            }
             return {
-              output: data.result.content[0].text,
+              output,
               title: `Code search: ${params.query}`,
               metadata: {},
             }

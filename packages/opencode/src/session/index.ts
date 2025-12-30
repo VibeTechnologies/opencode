@@ -2,9 +2,12 @@ import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { Decimal } from "decimal.js"
 import z from "zod"
+import path from "path"
+import fs from "fs/promises"
 import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Config } from "../config/config"
 import { Flag } from "../flag/flag"
+import { Global } from "../global"
 import { Identifier } from "../id/id"
 import { Installation } from "../installation"
 
@@ -307,6 +310,8 @@ export namespace Session {
         }
         await Storage.remove(msg)
       }
+      const toolResultsDir = path.join(Global.Path.data, "storage", "tool_results", sessionID)
+      await fs.rm(toolResultsDir, { recursive: true, force: true }).catch(() => {})
       await Storage.remove(["session", project.id, sessionID])
       Bus.publish(Event.Deleted, {
         info: session,

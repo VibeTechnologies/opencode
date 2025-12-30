@@ -15,8 +15,10 @@ import { fileURLToPath } from "url"
 import { Flag } from "@/flag/flag.ts"
 import path from "path"
 import { Shell } from "@/shell/shell"
+import { ToolResults } from "@/session/tool-results"
 
 const MAX_OUTPUT_LENGTH = Flag.OPENCODE_EXPERIMENTAL_BASH_MAX_OUTPUT_LENGTH || 30_000
+const MAX_OUTPUT_HARD_LIMIT = 10_000_000 // 10MB hard limit to prevent memory issues
 const DEFAULT_TIMEOUT = Flag.OPENCODE_EXPERIMENTAL_BASH_DEFAULT_TIMEOUT_MS || 2 * 60 * 1000
 
 export const log = Log.create({ service: "bash-tool" })
@@ -216,8 +218,10 @@ export const BashTool = Tool.define("bash", async () => {
       })
 
       const append = (chunk: Buffer) => {
-        if (output.length <= MAX_OUTPUT_LENGTH) {
+        if (output.length < MAX_OUTPUT_HARD_LIMIT) {
           output += chunk.toString()
+        }
+        if (output.length <= MAX_OUTPUT_LENGTH) {
           ctx.metadata({
             metadata: {
               output,
@@ -274,11 +278,6 @@ export const BashTool = Tool.define("bash", async () => {
 
       let resultMetadata: String[] = ["<bash_metadata>"]
 
-      if (output.length > MAX_OUTPUT_LENGTH) {
-        output = output.slice(0, MAX_OUTPUT_LENGTH)
-        resultMetadata.push(`bash tool truncated output as it exceeded ${MAX_OUTPUT_LENGTH} char limit`)
-      }
-
       if (timedOut) {
         resultMetadata.push(`bash tool terminated commmand after exceeding timeout ${timeout} ms`)
       }
@@ -290,6 +289,21 @@ export const BashTool = Tool.define("bash", async () => {
       if (resultMetadata.length > 1) {
         resultMetadata.push("</bash_metadata>")
         output += "\n\n" + resultMetadata.join("\n")
+      }
+
+      if (output.length > MAX_OUTPUT_LENGTH) {
+        const wasHardLimited = output.length >= MAX_OUTPUT_HARD_LIMIT
+        const filePath = await ToolResults.save(ctx.sessionID, "bash", output)
+        const statusInfo: string[] = []
+        if (proc.exitCode != null && proc.exitCode !== 0) statusInfo.push(`Exit code: ${proc.exitCode}`)
+        if (timedOut) statusInfo.push(`Command timed out after ${timeout}ms`)
+        if (aborted) statusInfo.push("Command was aborted by user")
+        if (wasHardLimited) statusInfo.push(`Output was truncated at ${MAX_OUTPUT_HARD_LIMIT.toLocaleString()} character limit`)
+        const statusLine = statusInfo.length > 0 ? `\n${statusInfo.join(". ")}.` : ""
+        output = `Output (${output.length.toLocaleString()} characters) exceeds maximum allowed (${MAX_OUTPUT_LENGTH.toLocaleString()}).
+Output has been saved to ${filePath}${statusLine}
+Use the Read tool with offset/limit parameters to read specific portions,
+or use Grep to search for specific content within the file.`
       }
 
       return {

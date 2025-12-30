@@ -24,6 +24,7 @@ import { clone, mergeDeep, pipe } from "remeda"
 import { ToolRegistry } from "../tool/registry"
 import { Wildcard } from "../util/wildcard"
 import { MCP } from "../mcp"
+import { ToolResults } from "./tool-results"
 import { LSP } from "../lsp"
 import { ReadTool } from "../tool/read"
 import { ListTool } from "../tool/ls"
@@ -50,6 +51,7 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionPrompt {
   const log = Log.create({ service: "session.prompt" })
   export const OUTPUT_TOKEN_MAX = Flag.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX || 32_000
+  const MAX_MCP_OUTPUT_LENGTH = Flag.OPENCODE_EXPERIMENTAL_MCP_MAX_OUTPUT_LENGTH || 30_000
 
   const state = Instance.state(
     () => {
@@ -696,12 +698,25 @@ export namespace SessionPrompt {
           // Add support for other types if needed
         }
 
+        let output = textParts.join("\n\n")
+        let content = result.content
+
+        if (output.length > MAX_MCP_OUTPUT_LENGTH) {
+          const filePath = await ToolResults.save(input.sessionID, key, output)
+          const isJson = output.trim().startsWith("[") || output.trim().startsWith("{")
+          output = `Output (${output.length.toLocaleString()} characters) exceeds maximum allowed (${MAX_MCP_OUTPUT_LENGTH.toLocaleString()}).
+Output has been saved to ${filePath}
+${isJson ? "Format: JSON - use jq via bash tool for structured queries.\n" : ""}Use the Read tool with offset/limit parameters to read specific portions,
+or use Grep to search for specific content within the file.`
+          content = [{ type: "text" as const, text: output }]
+        }
+
         return {
           title: "",
           metadata: result.metadata ?? {},
-          output: textParts.join("\n\n"),
+          output,
           attachments,
-          content: result.content, // directly return content to preserve ordering when outputting to model
+          content,
         }
       }
       item.toModelOutput = (result) => {

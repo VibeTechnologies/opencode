@@ -4,8 +4,10 @@ import TurndownService from "turndown"
 import DESCRIPTION from "./webfetch.txt"
 import { Config } from "../config/config"
 import { Permission } from "../permission"
+import { ToolResults } from "../session/tool-results"
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_OUTPUT_LENGTH = 30_000
 const DEFAULT_TIMEOUT = 30 * 1000 // 30 seconds
 const MAX_TIMEOUT = 120 * 1000 // 2 minutes
 
@@ -95,50 +97,42 @@ export const WebFetchTool = Tool.define("webfetch", {
     const title = `${params.url} (${contentType})`
 
     // Handle content based on requested format and actual content type
+    let output: string
     switch (params.format) {
       case "markdown":
         if (contentType.includes("text/html")) {
-          const markdown = convertHTMLToMarkdown(content)
-          return {
-            output: markdown,
-            title,
-            metadata: {},
-          }
+          output = convertHTMLToMarkdown(content)
+        } else {
+          output = content
         }
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        break
 
       case "text":
         if (contentType.includes("text/html")) {
-          const text = await extractTextFromHTML(content)
-          return {
-            output: text,
-            title,
-            metadata: {},
-          }
+          output = await extractTextFromHTML(content)
+        } else {
+          output = content
         }
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        break
 
       case "html":
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
-
       default:
-        return {
-          output: content,
-          title,
-          metadata: {},
-        }
+        output = content
+        break
+    }
+
+    if (output.length > MAX_OUTPUT_LENGTH) {
+      const filePath = await ToolResults.save(ctx.sessionID, "webfetch", output)
+      output = `Output (${output.length.toLocaleString()} characters) exceeds maximum allowed (${MAX_OUTPUT_LENGTH.toLocaleString()}).
+Output has been saved to ${filePath}
+Use the Read tool with offset/limit parameters to read specific portions,
+or use Grep to search for specific content within the file.`
+    }
+
+    return {
+      output,
+      title,
+      metadata: {},
     }
   },
 })
