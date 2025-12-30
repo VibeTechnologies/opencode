@@ -68,6 +68,33 @@ clone_or_update_repo() {
     print_message success "Repository ready"
 }
 
+detect_platform() {
+    local raw_os=$(uname -s)
+    case "$raw_os" in
+        Darwin*) os="darwin" ;;
+        Linux*) os="linux" ;;
+        MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+        *) os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]') ;;
+    esac
+
+    arch=$(uname -m)
+    if [[ "$arch" == "aarch64" ]]; then
+        arch="arm64"
+    fi
+    if [[ "$arch" == "x86_64" ]]; then
+        arch="x64"
+    fi
+
+    if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
+        rosetta_flag=$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)
+        if [ "$rosetta_flag" = "1" ]; then
+            arch="arm64"
+        fi
+    fi
+
+    PLATFORM="$os-$arch"
+}
+
 build_and_install() {
     print_message info "${MUTED}Installing dependencies...${NC}"
     bun install
@@ -76,10 +103,21 @@ build_and_install() {
     cd "$CLONE_DIR/packages/opencode"
     bun run build
     
-    print_message info "${MUTED}Installing globally...${NC}"
+    print_message info "${MUTED}Installing binary...${NC}"
     mkdir -p "$INSTALL_DIR"
-    cd "$CLONE_DIR"
-    bun install -g ./packages/opencode
+    
+    detect_platform
+    local binary_path="$CLONE_DIR/packages/opencode/dist/opencode-$PLATFORM/bin/opencode"
+    
+    if [ ! -f "$binary_path" ]; then
+        print_message error "Binary not found for platform: $PLATFORM"
+        print_message info "Available platforms:"
+        ls "$CLONE_DIR/packages/opencode/dist/"
+        exit 1
+    fi
+    
+    cp "$binary_path" "$INSTALL_DIR/opencode"
+    chmod 755 "$INSTALL_DIR/opencode"
     
     print_message success "Build complete"
 }
