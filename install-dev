@@ -73,10 +73,12 @@ build_and_install() {
     bun install
     
     print_message info "${MUTED}Building opencode...${NC}"
+    cd "$CLONE_DIR/packages/opencode"
     bun run build
     
     print_message info "${MUTED}Installing globally...${NC}"
     mkdir -p "$INSTALL_DIR"
+    cd "$CLONE_DIR"
     bun install -g ./packages/opencode
     
     print_message success "Build complete"
