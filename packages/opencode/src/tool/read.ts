@@ -11,6 +11,7 @@ import { Identifier } from "../id/id"
 import { Permission } from "../permission"
 import { Agent } from "@/agent/agent"
 import { iife } from "@/util/iife"
+import { Global } from "../global"
 
 const DEFAULT_READ_LIMIT = 2000
 const MAX_LINE_LENGTH = 2000
@@ -30,7 +31,8 @@ export const ReadTool = Tool.define("read", {
     const title = path.relative(Instance.worktree, filepath)
     const agent = await Agent.get(ctx.agent)
 
-    if (!ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(Instance.directory, filepath)) {
+    const isInStorageDir = Filesystem.contains(Global.Path.data, filepath)
+    if (!ctx.extra?.["bypassCwdCheck"] && !Filesystem.contains(Instance.directory, filepath) && !isInStorageDir) {
       const parentDir = path.dirname(filepath)
       if (agent.permission.external_directory === "ask") {
         await Permission.ask({
